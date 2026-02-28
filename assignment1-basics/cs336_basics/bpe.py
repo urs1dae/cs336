@@ -57,7 +57,7 @@ def split_special_tokens(
 ) -> list[str]:
     
     escaped = [re.escape(token) for token in special_tokens]
-    
+
     pattern = r"|".join(escaped)
     
     return re.split(pattern, text)
@@ -219,7 +219,7 @@ def train_bpe(
         merge_pair, count = max(byte_pair_counter.items(), key=lambda x: (x[1], x[0]))
         
         new_token = merge_pair[0] + merge_pair[1]
-        
+
         merges.append(merge_pair)
         vocab[new_id] = new_token
         new_id += 1
