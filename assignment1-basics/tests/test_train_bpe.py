@@ -126,7 +126,7 @@ def test_train_bpe_expts_owt():
 
     vocab, merges = run_train_bpe(
         input_path=input_path,
-        vocab_size=10000,
+        vocab_size=32000,
         special_tokens=["<|endoftext|>"]
     )
 
