@@ -1,9 +1,9 @@
 # data
 data/
-TinyStoriesV2-GPT4-vocab.json
-TinyStoriesV2-GPT4-merged.txt
-owt-vocab.json
-owt-merged.txt
+assignment1-basics/tests/fixtures/TinyStoriesV2-GPT4-vocab.json
+assignment1-basics/tests/fixtures/TinyStoriesV2-GPT4-merged.txt
+assignment1-basics/tests/fixtures/owt-vocab.json
+assignment1-basics/tests/fixtures/owt-merged.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import os
 import heapq
 import regex as re
 from collections import Counter, defaultdict
+from multiprocessing import Pool, cpu_count
 from typing import BinaryIO
 
 
@@ -97,8 +100,7 @@ def count_byte_pair(
     bytes_seq_counter: dict[tuple[bytes, ...], int]
 ) -> tuple[
     dict[tuple[bytes, bytes], int],
-    dict[tuple[bytes, bytes], set[tuple[bytes, ...]]],
-    list[int, tuple[bytes, bytes]]
+    dict[tuple[bytes, bytes], set[tuple[bytes, ...]]]
     ]:
 
     bytes_pair_counter: dict[tuple[bytes, bytes], int] = defaultdict(int)
@@ -111,10 +113,101 @@ def count_byte_pair(
             bytes_pair_counter[pair] += occ * count
             pair_to_seq[pair].add(bytes_seq)
 
-    bytes_pair_heap = [(-c, p) for p, c in bytes_pair_counter.items()]
-    heapq.heapify(bytes_pair_heap)
+    return bytes_pair_counter, pair_to_seq
 
-    return bytes_pair_counter, pair_to_seq, bytes_pair_heap
+
+def pre_tokenization_serial(
+    input_path: str | os.PathLike,
+    special_tokens: list[str]
+) -> tuple[
+    dict[tuple[bytes, ...], int],
+    dict[tuple[bytes, bytes], int],
+    dict[tuple[bytes, bytes], set[tuple[bytes, ...]]],
+]:
+    with open(input_path, "rb") as f:
+        boundaries = find_chunk_boundaries(f, cpu_count(), b"<|endoftext|>")
+        texts = ""
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
+            f.seek(start)
+            texts += f.read(end - start).decode("utf-8", errors="ignore")
+
+    chunks = split_special_tokens(texts, special_tokens)
+    bytes_seq_counter = count_bytes_seq(chunks)
+    bytes_pair_counter, pair_to_seq = count_byte_pair(bytes_seq_counter)
+
+    return bytes_seq_counter, bytes_pair_counter, pair_to_seq
+
+
+def pre_tokenization_worker(
+    input_path: str | os.PathLike,
+    interval: tuple[int, int],
+    special_tokens: list[str],
+) -> tuple[
+    dict[tuple[bytes, ...], int],
+    dict[tuple[bytes, bytes], int],
+    dict[tuple[bytes, bytes], set[tuple[bytes, ...]]],
+]:
+    start, end = interval
+    with open(input_path, "rb") as file:
+        file.seek(start)
+        texts = file.read(end - start).decode("utf-8", errors="ignore")
+
+    chunks = split_special_tokens(texts, special_tokens)
+    bytes_seq_counter = count_bytes_seq(chunks)
+    bytes_pair_counter, pair_to_seq = count_byte_pair(bytes_seq_counter)
+
+    return bytes_seq_counter, bytes_pair_counter, pair_to_seq
+
+
+def pre_tokenization_parallel(
+    input_path: str | os.PathLike,
+    special_tokens: list[str]
+) -> tuple[
+    dict[tuple[bytes, ...], int],
+    dict[tuple[bytes, bytes], int],
+    dict[tuple[bytes, bytes], set[tuple[bytes, ...]]],
+]:
+
+    with open(input_path, "rb") as f:
+        boundaries = find_chunk_boundaries(f, cpu_count(), b"<|endoftext|>")
+    intervals = []
+    for start, end in zip(boundaries[:-1], boundaries[1:]):
+        intervals.append((start, end))
+
+    tasks = [
+        (input_path, interval, special_tokens)
+        for interval in intervals
+    ]
+    with Pool(min(len(intervals), cpu_count())) as pool:
+        results = pool.starmap(pre_tokenization_worker, tasks)
+
+    bytes_seq_counter: dict[tuple[bytes, ...], int] = Counter()
+    bytes_pair_counter: dict[tuple[bytes, bytes], int] = Counter()
+    pair_to_seq: dict[tuple[bytes, bytes], set[tuple[bytes, ...]]] = defaultdict(set)
+    for a, b, c in results:
+        bytes_seq_counter.update(a)
+        bytes_pair_counter.update(b)
+        for k, v in c.items():
+            pair_to_seq[k].update(v)
+
+    return bytes_seq_counter, bytes_pair_counter, pair_to_seq
+
+
+class MaxCountPair:
+    __slots__ = ("count", "pair")
+
+    def __init__(self, count: int, pair: tuple[bytes, bytes]):
+        self.count = count
+        self.pair = pair
+
+    def __lt__(self, other: MaxCountPair):
+        if self.count != other.count:
+            return self.count > other.count
+        return self.pair > other.pair
+
+    def __iter__(self):
+        yield self.count
+        yield self.pair
 
 
 def remove_bytes_seq(
@@ -129,7 +222,8 @@ def remove_bytes_seq(
 
     for pair, occ in pair_counter.items():
         bytes_pair_counter[pair] -= occ * count
-        heapq.heappush(bytes_pair_heap, (-bytes_pair_counter[pair], pair))
+        # lazy deletion
+        heapq.heappush(bytes_pair_heap, MaxCountPair(bytes_pair_counter[pair], pair))
         if bytes_pair_counter[pair] <= 0:
             assert bytes_pair_counter[pair] == 0
             del bytes_pair_counter[pair]
@@ -153,7 +247,7 @@ def add_bytes_seq(
 
     for pair, occ in pair_counter.items():
         bytes_pair_counter[pair] += occ * count
-        heapq.heappush(bytes_pair_heap, (-bytes_pair_counter[pair], pair))
+        heapq.heappush(bytes_pair_heap, MaxCountPair(bytes_pair_counter[pair], pair))
         pair_to_seq[pair].add(bytes_seq)
 
 
@@ -214,24 +308,24 @@ def train_bpe(
 
 
     # pre tokenization
-    f = open(input_path, "rb")
-    boundaries = find_chunk_boundaries(f, 5, b"<|endoftext|>")
-    texts = ""
-    for start, end in zip(boundaries[:-1], boundaries[1:]):
-        f.seek(start)
-        texts += f.read(end - start).decode("utf-8", errors="ignore")
-    chunks = split_special_tokens(texts, special_tokens)
-    bytes_seq_counter = count_bytes_seq(chunks)
-    bytes_pair_counter, pair_to_seq, bytes_pair_heap = count_byte_pair(bytes_seq_counter)
+
+    # serial
+    # bytes_seq_counter, bytes_pair_counter, pair_to_seq = pre_tokenization_serial(input_path, special_tokens)
+
+    # parallel
+    bytes_seq_counter, bytes_pair_counter, pair_to_seq = pre_tokenization_parallel(input_path, special_tokens)
+
+    bytes_pair_heap = [MaxCountPair(c, p) for p, c in bytes_pair_counter.items()]
+    heapq.heapify(bytes_pair_heap)
 
 
     # merges
     while new_id < vocab_size:
 
         while True:
-            neg_count, merge_pair = heapq.heappop(bytes_pair_heap)
+            count, merge_pair = heapq.heappop(bytes_pair_heap)
             real_count = bytes_pair_counter[merge_pair]
-            if - neg_count == real_count:
+            if count == real_count:
                 break
 
         new_token = merge_pair[0] + merge_pair[1]

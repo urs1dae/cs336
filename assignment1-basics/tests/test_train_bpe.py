@@ -91,7 +91,7 @@ def test_train_bpe_special_tokens(snapshot):
 
 
 def test_train_bpe_tinystories():
-    input_path = "assignment1-basics/data/TinyStoriesV2-GPT4-valid.txt"
+    input_path = "assignment1-basics/data/TinyStoriesV2-GPT4-train.txt"
 
     pr = cProfile.Profile()
     pr.enable()

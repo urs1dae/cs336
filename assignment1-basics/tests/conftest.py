@@ -26,7 +26,7 @@ class NumpySnapshot:
 
     def __init__(
         self,
-        snapshot_dir: str = "tests/_snapshots",
+        snapshot_dir: str = "assignment1-basics/tests/_snapshots",
         default_force_update: bool = False,
         always_match_exact: bool = False,
         default_test_name: str | None = None,
@@ -98,7 +98,7 @@ class NumpySnapshot:
 class Snapshot:
     def __init__(
         self,
-        snapshot_dir: str = "tests/_snapshots",
+        snapshot_dir: str = "assignment1-basics/tests/_snapshots",
         default_force_update: bool = False,
         default_test_name: str | None = None,
     ):
