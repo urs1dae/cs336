@@ -1,4 +1,5 @@
 import os
+import heapq
 import regex as re
 from collections import Counter, defaultdict
 from typing import BinaryIO
@@ -55,30 +56,30 @@ def split_special_tokens(
     text: str,
     special_tokens: list[str]
 ) -> list[str]:
-    
+
     escaped = [re.escape(token) for token in special_tokens]
 
     pattern = r"|".join(escaped)
-    
+
     return re.split(pattern, text)
 
 
 def count_bytes_seq(
     chunks: list[str]
 ) -> Counter:
-    
+
     pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
     words_counter = Counter()
     for chunk in chunks:
         words = re.findall(pattern, chunk)
         words_counter += Counter(words)
-    
+
     bytes_seq_counter = {
-        tuple(bytes([b]) for b in w.encode("utf-8")) : c 
+        tuple(bytes([b]) for b in w.encode("utf-8")) : c
         for w, c in words_counter.items()
     }
-    
+
     return bytes_seq_counter
 
 
@@ -94,36 +95,45 @@ def seq_to_pair_counter(
 
 def count_byte_pair(
     bytes_seq_counter: dict[tuple[bytes, ...], int]
-) -> tuple[dict[tuple[bytes, bytes], int], dict[tuple[bytes, bytes], set[tuple[bytes, ...]]]]:
-    
-    byte_pair_counter: dict[tuple[bytes, bytes], int] = defaultdict(int)
+) -> tuple[
+    dict[tuple[bytes, bytes], int],
+    dict[tuple[bytes, bytes], set[tuple[bytes, ...]]],
+    list[int, tuple[bytes, bytes]]
+    ]:
+
+    bytes_pair_counter: dict[tuple[bytes, bytes], int] = defaultdict(int)
     pair_to_seq: dict[tuple[bytes, bytes], set[tuple[bytes, ...]]] = defaultdict(set)
-    
+
     for bytes_seq, count in  bytes_seq_counter.items():
-        
+
         pair_counter = seq_to_pair_counter(bytes_seq)
         for pair, occ in pair_counter.items():
-            byte_pair_counter[pair] += occ * count
+            bytes_pair_counter[pair] += occ * count
             pair_to_seq[pair].add(bytes_seq)
-    
-    return byte_pair_counter, pair_to_seq
+
+    bytes_pair_heap = [(-c, p) for p, c in bytes_pair_counter.items()]
+    heapq.heapify(bytes_pair_heap)
+
+    return bytes_pair_counter, pair_to_seq, bytes_pair_heap
 
 
 def remove_bytes_seq(
     bytes_seq: tuple[bytes, ...],
     count: int,
-    byte_pair_counter: dict[tuple[bytes, bytes], int],
+    bytes_pair_counter: dict[tuple[bytes, bytes], int],
     pair_to_seq: dict[tuple[bytes, bytes], set[tuple[bytes, ...]]],
+    bytes_pair_heap: list[int, tuple[bytes, bytes]]
 ) -> None:
-    
+
     pair_counter = seq_to_pair_counter(bytes_seq)
 
     for pair, occ in pair_counter.items():
-        byte_pair_counter[pair] -= occ * count
-        if byte_pair_counter[pair] <= 0:
-            assert byte_pair_counter[pair] == 0
-            del byte_pair_counter[pair]
-        
+        bytes_pair_counter[pair] -= occ * count
+        heapq.heappush(bytes_pair_heap, (-bytes_pair_counter[pair], pair))
+        if bytes_pair_counter[pair] <= 0:
+            assert bytes_pair_counter[pair] == 0
+            del bytes_pair_counter[pair]
+
         s = pair_to_seq[pair]
         if s is not None:
             s.discard(bytes_seq)
@@ -134,14 +144,16 @@ def remove_bytes_seq(
 def add_bytes_seq(
     bytes_seq: tuple[bytes, ...],
     count: int,
-    byte_pair_counter: dict[tuple[bytes, bytes], int],
+    bytes_pair_counter: dict[tuple[bytes, bytes], int],
     pair_to_seq: dict[tuple[bytes, bytes], set[tuple[bytes, ...]]],
+    bytes_pair_heap: list[int, tuple[bytes, bytes]]
 ) -> None:
-    
+
     pair_counter = seq_to_pair_counter(bytes_seq)
-    
+
     for pair, occ in pair_counter.items():
-        byte_pair_counter[pair] += occ * count
+        bytes_pair_counter[pair] += occ * count
+        heapq.heappush(bytes_pair_heap, (-bytes_pair_counter[pair], pair))
         pair_to_seq[pair].add(bytes_seq)
 
 
@@ -210,14 +222,18 @@ def train_bpe(
         texts += f.read(end - start).decode("utf-8", errors="ignore")
     chunks = split_special_tokens(texts, special_tokens)
     bytes_seq_counter = count_bytes_seq(chunks)
-    byte_pair_counter, pair_to_seq = count_byte_pair(bytes_seq_counter)
+    bytes_pair_counter, pair_to_seq, bytes_pair_heap = count_byte_pair(bytes_seq_counter)
 
 
     # merges
     while new_id < vocab_size:
-        
-        merge_pair, count = max(byte_pair_counter.items(), key=lambda x: (x[1], x[0]))
-        
+
+        while True:
+            neg_count, merge_pair = heapq.heappop(bytes_pair_heap)
+            real_count = bytes_pair_counter[merge_pair]
+            if - neg_count == real_count:
+                break
+
         new_token = merge_pair[0] + merge_pair[1]
 
         merges.append(merge_pair)
@@ -231,17 +247,16 @@ def train_bpe(
             count = bytes_seq_counter[bytes_seq]
             del bytes_seq_counter[bytes_seq]
 
-            remove_bytes_seq(bytes_seq, count, byte_pair_counter, pair_to_seq)
-            
+            remove_bytes_seq(bytes_seq, count, bytes_pair_counter, pair_to_seq, bytes_pair_heap)
+
             new_seq = apply_merge(bytes_seq, merge_pair, new_token)
             new_bytes_seqs[new_seq] = count
-        
+
         for new_seq, count in new_bytes_seqs.items():
             assert new_seq not in bytes_seq_counter
             bytes_seq_counter[new_seq] = count
-            
-            add_bytes_seq(new_seq, count, byte_pair_counter, pair_to_seq)
-        
-    
-    return vocab, merges
 
+            add_bytes_seq(new_seq, count, bytes_pair_counter, pair_to_seq, bytes_pair_heap)
+
+
+    return vocab, merges

@@ -91,7 +91,7 @@ def test_train_bpe_special_tokens(snapshot):
 
 
 def test_train_bpe_tinystories():
-    input_path = "data/TinyStoriesV2-GPT4-valid.txt"
+    input_path = "assignment1-basics/data/TinyStoriesV2-GPT4-valid.txt"
 
     pr = cProfile.Profile()
     pr.enable()
@@ -101,13 +101,13 @@ def test_train_bpe_tinystories():
         vocab_size=10000,
         special_tokens=["<|endoftext|>"]
     )
-    
+
     pr.disable()
-    
+
     stats = pstats.Stats(pr)
     stats.strip_dirs()
     stats.sort_stats("cumtime")
-    stats.print_stats(20) 
+    stats.print_stats(20)
 
     vocab_serializable = {k: v.decode("utf-8", errors="ignore") for k, v in vocab.items()}
     with open(FIXTURES_PATH / "TinyStoriesV2-GPT4-vocab.json", "w", encoding="utf-8") as f:
@@ -119,7 +119,7 @@ def test_train_bpe_tinystories():
 
 
 def test_train_bpe_expts_owt():
-    input_path = "data/owt_train.txt"
+    input_path = "assignment1-basics/data/owt_train.txt"
 
     pr = cProfile.Profile()
     pr.enable()
@@ -129,13 +129,13 @@ def test_train_bpe_expts_owt():
         vocab_size=10000,
         special_tokens=["<|endoftext|>"]
     )
-    
+
     pr.disable()
-    
+
     stats = pstats.Stats(pr)
     stats.strip_dirs()
     stats.sort_stats("cumtime")
-    stats.print_stats(20) 
+    stats.print_stats(20)
 
     vocab_serializable = {k: v.decode("utf-8", errors="ignore") for k, v in vocab.items()}
     with open(FIXTURES_PATH / "owt-vocab.json", "w", encoding="utf-8") as f:
@@ -144,4 +144,3 @@ def test_train_bpe_expts_owt():
     with open(FIXTURES_PATH / "owt-merges.txt", "w", encoding="utf-8") as f:
         for a, b in merges:
             f.write(f"{a.decode('utf-8', errors='ignore')} {b.decode('utf-8', errors='ignore')}\n")
-
