@@ -109,13 +109,14 @@ def test_train_bpe_tinystories():
     stats.sort_stats("cumtime")
     stats.print_stats(20)
 
-    vocab_serializable = {k: v.decode("utf-8", errors="ignore") for k, v in vocab.items()}
+    gpt2_byte_encoder = gpt2_bytes_to_unicode()
+    vocab_serializable = {"".join(gpt2_byte_encoder[b] for b in v): str(k) for k, v in vocab.items()}
     with open(FIXTURES_PATH / "TinyStoriesV2-GPT4-vocab.json", "w", encoding="utf-8") as f:
         json.dump(vocab_serializable, f, ensure_ascii=False, indent=4)
 
     with open(FIXTURES_PATH / "TinyStoriesV2-GPT4-merges.txt", "w", encoding="utf-8") as f:
-        for a, b in merges:
-            f.write(f"{a.decode('utf-8', errors='ignore')} {b.decode('utf-8', errors='ignore')}\n")
+        for merge1, merge2 in merges:
+            f.write(f"{''.join(gpt2_byte_encoder[b] for b in merge1)} {''.join(gpt2_byte_encoder[b] for b in merge2)}\n")
 
 
 def test_train_bpe_expts_owt():
@@ -137,10 +138,11 @@ def test_train_bpe_expts_owt():
     stats.sort_stats("cumtime")
     stats.print_stats(20)
 
-    vocab_serializable = {k: v.decode("utf-8", errors="ignore") for k, v in vocab.items()}
+    gpt2_bytes_encoder = gpt2_bytes_to_unicode()
+    vocab_serializable = {"".join(gpt2_bytes_encoder[b] for b in v): str(k) for k, v in vocab.items()}
     with open(FIXTURES_PATH / "owt-vocab.json", "w", encoding="utf-8") as f:
         json.dump(vocab_serializable, f, ensure_ascii=False, indent=4)
 
     with open(FIXTURES_PATH / "owt-merges.txt", "w", encoding="utf-8") as f:
-        for a, b in merges:
-            f.write(f"{a.decode('utf-8', errors='ignore')} {b.decode('utf-8', errors='ignore')}\n")
+        for merge1, merge2 in merges:
+            f.write(f"{''.join(gpt2_bytes_encoder[b] for b in merge1)} {''.join(gpt2_bytes_encoder[b] for b in merge2)}\n")
