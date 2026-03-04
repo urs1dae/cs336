@@ -1,4 +1,5 @@
-# data
+# add
+.vscode/
 data/
 tests/fixtures/TinyStoriesV2-GPT4-vocab.json
 tests/fixtures/TinyStoriesV2-GPT4-merges.txt

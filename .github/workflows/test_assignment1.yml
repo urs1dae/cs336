@@ -30,6 +30,5 @@ jobs:
       - name: Run targeted BPE tests
         run: >-
           uv run --project assignment1-basics pytest
-          assignment1-basics/tests/test_train_bpe.py::test_train_bpe_speed
-          assignment1-basics/tests/test_train_bpe.py::test_train_bpe
-          assignment1-basics/tests/test_train_bpe.py::test_train_bpe_special_tokens
+          assignment1-basics/tests/test_train_bpe.py
+          assignment1-basics/tests/test_tokenizer.py
