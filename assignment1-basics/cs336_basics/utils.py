@@ -120,9 +120,10 @@ def split_special_tokens(
     special_tokens: list[str] | None,
 ) -> list[str]:
     """Split text by special tokens while keeping non-special spans."""
-    if special_tokens is None: return [text]
+    if special_tokens is None:
+        return [text]
     escaped = [re.escape(token) for token in special_tokens]
-    pattern = f"({"|".join(escaped)})"
+    pattern = f"({'|'.join(escaped)})"
     return re.split(pattern, text)
 
 
@@ -136,8 +137,7 @@ def count_bytes_seq(
         words_counter.update(words)
 
     bytes_seq_counter = {
-        tuple(bytes([b]) for b in word.encode("utf-8")): count
-        for word, count in words_counter.items()
+        tuple(bytes([b]) for b in word.encode("utf-8")): count for word, count in words_counter.items()
     }
 
     return bytes_seq_counter
@@ -249,6 +249,7 @@ def pre_tokenization_parallel(
 
 class MaxCountPair:
     """Heap item that pops the pair with highest count first."""
+
     __slots__ = ("count", "pair")
 
     def __init__(self, count: int, pair: BytePair):
@@ -337,7 +338,7 @@ def apply_merge(
     new_seq: list[bytes] = []
     i = 0
     while i < len(seq):
-        if seq[i:i + 2] == merge_pair:
+        if seq[i : i + 2] == merge_pair:
             new_seq.append(new_token)
             i += 2
         else:
@@ -357,7 +358,8 @@ def pre_tokenization_encode(
     output: list[ByteSeq] = []
 
     for part in chunks:
-        if not part: continue
+        if not part:
+            continue
 
         if special_token_set is not None and part in special_token_set:
             output.append((part.encode("utf-8"),))
@@ -390,10 +392,7 @@ class MergeLru:
             self.cache.popitem(last=False)
 
 
-def best_pair_by_rank(
-    seq : ByteSeq,
-    merge_rank : dict[BytePair, int]
-) -> tuple[BytePair | None, int]:
+def best_pair_by_rank(seq: ByteSeq, merge_rank: dict[BytePair, int]) -> tuple[BytePair | None, int]:
     best_pair = None
     best_rank = len(merge_rank)
     if len(seq) == 1:
