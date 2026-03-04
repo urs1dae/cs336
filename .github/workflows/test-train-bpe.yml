@@ -1,7 +1,6 @@
 name: test-train-bpe
 
 on:
-  push:
   pull_request:
 
 jobs:
