@@ -1,13 +1,11 @@
 from __future__ import annotations
 import heapq
 import json
-from typing import Iterable
+from collections.abc import Iterable
 
 from cs336_basics.utils import (
     BytePair,
     ByteSeq,
-    PairCounter,
-    PairToSeqMap,
     SeqCounter,
     add_bytes_seq,
     apply_merge,
@@ -19,21 +17,17 @@ from cs336_basics.utils import (
     MaxCountPair,
     pre_tokenization_encode,
     MergeLru,
-    best_pair_by_rank
+    best_pair_by_rank,
 )
+
 
 class Tokenizer:
     """Byte-level BPE tokenizer with train/load interfaces."""
+
     gpt2_byte_encoder = gpt2_bytes_to_unicode()
     gpt2_byte_decoder = {v: k for k, v in gpt2_bytes_to_unicode().items()}
 
-
-    def __init__(
-        self,
-        vocab: dict[int, bytes],
-        merges: list[BytePair],
-        special_tokens: list[str] | None = None
-    ):
+    def __init__(self, vocab: dict[int, bytes], merges: list[BytePair], special_tokens: list[str] | None = None):
         """Store tokenizer vocabulary, merges, and optional special tokens."""
         self.vocab = vocab
         self.bytes_to_tokenid = {v: k for k, v in vocab.items()}
@@ -43,12 +37,7 @@ class Tokenizer:
         self.lru = MergeLru(1000)
 
     @classmethod
-    def from_file(
-        cls,
-        vocab_filepath: str,
-        merges_filepath: str,
-        special_tokens: list[str] | None = None
-    ):
+    def from_file(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None = None):
         """Build a tokenizer from GPT-2 style vocab/merge files."""
         with open(vocab_filepath, encoding="utf-8") as f:
             gpt2_vocab = json.load(f)
@@ -128,10 +117,7 @@ class Tokenizer:
 
         return cls(vocab, merges, special_tokens)
 
-    def encode_seq(
-        self,
-        seq: ByteSeq
-    ) -> tuple[int, ...]:
+    def encode_seq(self, seq: ByteSeq) -> tuple[int, ...]:
         if len(seq) == 1:
             return (self.bytes_to_tokenid[seq[0]],)
 
@@ -154,44 +140,28 @@ class Tokenizer:
 
         return seq_tokens
 
-    def encode(
-        self,
-        text: str
-    ) -> list[int]:
+    def encode(self, text: str) -> list[int]:
         """Encode text into token ids."""
         bytes_seqs, _ = pre_tokenization_encode(text, self.special_tokens)
 
-        tokens : list[int] = []
+        tokens: list[int] = []
 
         for seq in bytes_seqs:
             tokens.extend(self.encode_seq(seq))
 
         return tokens
 
-    def encode_iterable(
-        self,
-        iterable: Iterable[str]
-    ) -> Iterable[int]:
+    def encode_iterable(self, iterable: Iterable[str]) -> Iterable[int]:
         """Yield token ids for each text chunk in an iterable."""
         buffer = ""
-        if self.special_tokens is None:
-            special_suffix = 0
-        else:
-            special_suffix = max((len(t) for t in self.special_tokens)) - 1
 
         for chunk in iterable:
             if not chunk:
                 continue
 
             buffer += chunk
-            # if special_suffix > 0:
-            #     safe_text, buffer = buffer[:-special_suffix], buffer[-special_suffix:]
-            # else:
-            #     safe_text, buffer = buffer, ""
 
-            bytes_seq, last = pre_tokenization_encode(buffer, self.special_tokens)
-
-            buffer = last
+            bytes_seq, buffer = pre_tokenization_encode(buffer, self.special_tokens)
 
             for seq in bytes_seq[:-1]:
                 for token in self.encode_seq(seq):
@@ -203,10 +173,7 @@ class Tokenizer:
                 for token in self.encode_seq(seq):
                     yield token
 
-    def decode(
-        self,
-        ids: list[int]
-    ) -> str:
+    def decode(self, ids: list[int]) -> str:
         """Decode token ids back to text."""
         raw = b"".join(self.vocab[i] for i in ids)
 
