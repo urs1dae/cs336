@@ -203,7 +203,6 @@ class Tokenizer:
                 continue
 
             pending_text += chunk
-
             byte_sequences, pending_text = pre_tokenization_encode(pending_text, self.special_tokens)
 
             # Keep the final sequence buffered to avoid splitting across chunks.
