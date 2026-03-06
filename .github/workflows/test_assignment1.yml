@@ -27,8 +27,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --project assignment1-basics
 
-      # - name: Run targeted BPE tests
-      #   run: >-
-      #     uv run --project assignment1-basics pytest
-      #     assignment1-basics/tests/test_train_bpe.py
-      #     assignment1-basics/tests/test_tokenizer.py
+      - name: Run tests
+        run: >-
+          uv run --project assignment1-basics pytest
+          assignment1-basics/tests/test_train_bpe.py
+          assignment1-basics/tests/test_tokenizer.py
+          assignment1-basics/tests/test_model.py::test_linear
+          assignment1-basics/tests/test_model.py::test_embedding
+          assignment1-basics/tests/test_model.py::test_swiglu
+          assignment1-basics/tests/test_model.py::test_rmsnorm
+          assignment1-basics/tests/test_model.py::test_rope
+          assignment1-basics/tests/test_model.py::test_softmax_matches_pytorch
