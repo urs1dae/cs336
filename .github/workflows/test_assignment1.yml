@@ -37,4 +37,6 @@ jobs:
           assignment1-basics/tests/test_model.py::test_swiglu
           assignment1-basics/tests/test_model.py::test_rmsnorm
           assignment1-basics/tests/test_model.py::test_rope
+          assignment1-basics/tests/test_model.py::test_scaled_dot_product_attention
+          assignment1-basics/tests/test_model.py::test_4d_scaled_dot_product_attention
           assignment1-basics/tests/test_nn_utils.py::test_softmax_matches_pytorch

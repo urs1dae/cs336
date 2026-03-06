@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
-from jaxtyping import Float, Int
+import einx
+import math
+from jaxtyping import Float, Int, Bool
 
 class Linear(nn.Module):
     def __init__(
@@ -27,7 +29,7 @@ class Linear(nn.Module):
         self,
         x: Float[torch.Tensor, "... d_in"]
     ) -> Float[torch.Tensor, "... d_out"]:
-        return x @ self.weight.T
+        return einx.dot("... [d_in], d_out [d_in -> ... d_out", x, self.weight)
 
 
 class Embedding(nn.Module):
@@ -144,8 +146,32 @@ class RoPE(nn.Module):
 def softmax(
     x: Float[torch.Tensor, "..."],
     dim: int
-):
+) -> Float[torch.Tensor, "..."]:
     max_element = torch.max(x, dim=dim, keepdim=True).values
     x_exp = torch.exp(x - max_element)
     x_out = x_exp / torch.sum(x_exp, dim=dim, keepdim=True)
     return x_out
+
+
+def scaled_dot_product_attention(
+    Q: Float[torch.Tensor, "batch_size ... seq_len_q d_k"],
+    K: Float[torch.Tensor, "batch_size ... seq_len_k d_k"],
+    V: Float[torch.Tensor, "batch_size ... seq_len_k d_v"],
+    mask: Bool[torch.Tensor, "seq_len_q seq_len_k"]
+) -> Float[torch.Tensor, "batch_size ... seq_len_q d_v"]:
+    d_k = K.shape[-1]
+    S = einx.dot(
+        "... seq_len_q d_k, ... seq_len_k d_k -> ... seq_len_q seq_len_k",
+        Q,
+        K
+    ) / math.sqrt(d_k)
+    A = softmax(
+        S.masked_fill(~mask, float('-inf')),
+        dim=-1
+    )
+    O = einx.dot(
+        "... seq_len_q seq_len_k, ... seq_len_k d_v -> ... seq_len_q d_v",
+        A,
+        V
+    )
+    return O
