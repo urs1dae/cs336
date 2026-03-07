@@ -154,7 +154,17 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    from cs336_basics.modules import CausalMaskMultiHeadSelfAttention
+    mha = CausalMaskMultiHeadSelfAttention(d_model, num_heads)
+    mha.load_state_dict(
+        {
+            "qkv_proj_weight":torch.stack(
+                (q_proj_weight, k_proj_weight, v_proj_weight)
+            ),
+            "o_proj_weight": o_proj_weight,
+        }
+    )
+    return mha(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -194,7 +204,22 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    from cs336_basics.modules import CausalMaskMultiHeadSelfAttentionWithRope
+    mha_with_rope = CausalMaskMultiHeadSelfAttentionWithRope(
+        d_model,
+        num_heads,
+        theta,
+        max_seq_len
+    )
+    mha_with_rope.load_state_dict(
+        {
+            "qkv_proj_weight":torch.stack(
+                (q_proj_weight, k_proj_weight, v_proj_weight)
+            ),
+            "o_proj_weight": o_proj_weight,
+        }
+    )
+    return mha_with_rope(in_features, token_positions)
 
 
 def run_rope(
@@ -291,7 +316,35 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    from cs336_basics.modules import TransformerBlock
+    transformer_block = TransformerBlock(
+        d_model=d_model,
+        num_heads=num_heads,
+        theta=theta,
+        max_seq_len=max_seq_len,
+        d_ff=d_ff
+    )
+    transformer_block.load_state_dict(
+        {
+            "mha.qkv_proj_weight": torch.stack(
+                (
+                    weights["attn.q_proj.weight"],
+                    weights["attn.k_proj.weight"],
+                    weights["attn.v_proj.weight"],
+                )
+            ),
+            "mha.o_proj_weight": weights["attn.output_proj.weight"],
+            "rms1.gain": weights["ln1.weight"],
+            "ffn.weight1.weight": weights["ffn.w1.weight"],
+            "ffn.weight2.weight": weights["ffn.w2.weight"],
+            "ffn.weight3.weight": weights["ffn.w3.weight"],
+            "rms2.gain": weights["ln2.weight"],
+        }
+    )
+
+    batch, seq_len, _ = in_features.shape
+    token_positions = torch.arange(seq_len, device=in_features.device, dtype=torch.long)
+    return transformer_block(in_features, token_positions)
 
 
 def run_transformer_lm(
@@ -373,7 +426,44 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    from cs336_basics.modules import TransformerLanguageModel
+
+    model = TransformerLanguageModel(
+        num_layers=num_layers,
+        vocab_size=vocab_size,
+        d_model=d_model,
+        num_heads=num_heads,
+        theta=rope_theta,
+        max_seq_len=context_length,
+        d_ff=d_ff,
+        device=in_indices.device,
+        dtype=weights["token_embeddings.weight"].dtype,
+    )
+
+    state_dict = {
+        "embedding.weight": weights["token_embeddings.weight"],
+        "final_rms.gain": weights["ln_final.weight"],
+        "final_layer.weight": weights["lm_head.weight"],
+    }
+
+    for layer_idx in range(num_layers):
+        prefix = f"layers.{layer_idx}"
+        state_dict[f"blocks.{layer_idx}.mha.qkv_proj_weight"] = torch.stack(
+            (
+                weights[f"{prefix}.attn.q_proj.weight"],
+                weights[f"{prefix}.attn.k_proj.weight"],
+                weights[f"{prefix}.attn.v_proj.weight"],
+            )
+        )
+        state_dict[f"blocks.{layer_idx}.mha.o_proj_weight"] = weights[f"{prefix}.attn.output_proj.weight"]
+        state_dict[f"blocks.{layer_idx}.rms1.gain"] = weights[f"{prefix}.ln1.weight"]
+        state_dict[f"blocks.{layer_idx}.ffn.weight1.weight"] = weights[f"{prefix}.ffn.w1.weight"]
+        state_dict[f"blocks.{layer_idx}.ffn.weight2.weight"] = weights[f"{prefix}.ffn.w2.weight"]
+        state_dict[f"blocks.{layer_idx}.ffn.weight3.weight"] = weights[f"{prefix}.ffn.w3.weight"]
+        state_dict[f"blocks.{layer_idx}.rms2.gain"] = weights[f"{prefix}.ln2.weight"]
+
+    model.load_state_dict(state_dict)
+    return model(in_indices)
 
 
 def run_rmsnorm(
@@ -413,7 +503,8 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
         SiLU to each element.
     """
-    raise NotImplementedError
+    from cs336_basics.modules import silu
+    return silu(in_features)
 
 
 def run_get_batch(
