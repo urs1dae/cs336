@@ -30,6 +30,4 @@ jobs:
       - name: Run tests
         run: >-
           uv run --project assignment1-basics pytest
-          assignment1-basics/tests/test_train_bpe.py
-          assignment1-basics/tests/test_tokenizer.py
-          assignment1-basics/tests/test_model.py
+          assignment1-basics/tests -k "not enhanced"
