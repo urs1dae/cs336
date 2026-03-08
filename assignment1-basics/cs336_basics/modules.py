@@ -571,8 +571,10 @@ def cross_entropy(
 
 
 def cross_entropy_loss(
-    losses: Float[torch.Tensor, "..."]
+    logits: Float[torch.Tensor, "... vocab_size"],
+    targets: Int[torch.Tensor, "..."]
 ) -> Float[torch.Tensor, ""]:
+    losses = cross_entropy(logits, targets)
     return losses.mean()
 
 
