@@ -121,7 +121,7 @@ class RmsNorm(nn.Module):
         return out_features.to(in_dtype)
 
 
-def silu(in_features: Float[torch.Tensor, "..."]) -> Float[torch.Tensor, "..."]:
+def silu(in_features: torch.Tensor) -> torch.Tensor:
     # Apply SiLU elementwise: x * sigmoid(x).
     return in_features * torch.sigmoid(in_features)
 
@@ -206,6 +206,94 @@ class RoPE(nn.Module):
         out_features = torch.stack((x0_rot, x1_rot), dim=-1).flatten(-2)
 
         return out_features
+
+
+def get_alibi_slopes(
+    num_heads: int,
+    device: torch.device | None = None,
+    dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    def slopes_power_of_2(n: int) -> torch.Tensor:
+        start = 2 ** (-2 ** (- (math.log2(n) - 3)))
+        exponents = torch.arange(1, n + 1, device=device, dtype=dtype)
+        return torch.pow(torch.tensor(start, device=device, dtype=dtype), exponents)
+
+    if (num_heads & (num_heads - 1)) == 0:
+        return slopes_power_of_2(num_heads)
+
+    n2 = 2 ** math.floor(math.log2(num_heads))
+    slopes_1 = slopes_power_of_2(n2)
+    slopes_2 = slopes_power_of_2(2 * n2)[0::2][: (num_heads - n2)]
+    return torch.cat([slopes_1, slopes_2], dim=0)
+
+
+class Alibi(nn.Module):
+    def __init__(
+        self,
+        num_heads: int,
+        max_seq_len: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        super().__init__()
+
+        slopes = get_alibi_slopes(num_heads, device, dtype).view(num_heads, 1, 1)
+        pos = torch.arange(0, max_seq_len, device=device)
+        rel_pos = pos[None, :] - pos[:, None]
+        bias = slopes * rel_pos[None, :, :]
+
+        self.register_buffer("bias", bias, persistent=False)
+
+    def forward(
+        self,
+        scores: Float[torch.Tensor, "..., num_heads, seq_len_q, seq_len_k"]
+    ):
+        seq_len_q, seq_len_k = scores.shape[-2], scores.shape[-1]
+        return scores + self.bias[None, :, :seq_len_q, :seq_len_k]
+
+
+class Yarn(nn.Module):
+    def __init__(
+        self,
+        theta: float,
+        d_k: int,
+        original_max_seq_len: int,
+        scale: float = 4.0,
+        mscale: float = 1.0,
+        device: torch.device | None = None
+    ):
+        super().__init__()
+
+        inv_freq = 1 / (theta ** (torch.arange(0, d_k, 2, device=device) / d_k))
+
+        self.original_max_seq_len = float(original_max_seq_len)
+        self.scale = scale
+        self.mscale = mscale
+        self.register_buffer('inv_freq', inv_freq, persistent=False)
+
+    def forward(
+        self,
+        in_features: Float[torch.Tensor, "... seq_len d_k"],
+        token_positions: Int[torch.Tensor, "... seq_len"]
+    ) -> Float[torch.Tensor, "... seq_len d_k"]:
+        """Rotate each even-odd channel pair according to token position."""
+        p = token_positions
+        o = self.original_max_seq_len
+        pos = torch.where(p <= o, p, o + (p - o) / self.scale)
+        freqs = pos.unsqueeze(-1) * self.inv_freq
+
+        cos = torch.cos(freqs)
+        sin = torch.sin(freqs)
+
+        x0 = in_features[..., ::2]
+        x1 = in_features[..., 1::2]
+
+        x0_rot = cos * x0 - sin * x1
+        x1_rot = sin * x0 + cos * x1
+
+        out_features = torch.stack((x0_rot, x1_rot), dim=-1).flatten(-2)
+
+        return out_features * math.sqrt(self.mscale)
 
 
 def softmax(
@@ -319,7 +407,6 @@ class CausalMaskMultiHeadSelfAttention(nn.Module):
             self.o_proj_weight
         )
         return out_features
-
 
 
 class CausalMaskMultiHeadSelfAttentionWithRope(nn.Module):

@@ -1,10 +1,10 @@
-name: test-train-bpe
+name: test-assignment1
 
 on:
   pull_request:
 
 jobs:
-  test-train-bpe-targeted:
+  test-assignment1:
     runs-on: ubuntu-latest
 
     steps:
